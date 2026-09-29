@@ -9,6 +9,7 @@ import pytest
 from terminaltexteffects.__main__ import build_parser
 from terminaltexteffects.effects import effect_swarm
 from terminaltexteffects.engine.terminal import TerminalConfig
+from terminaltexteffects.utils.geometry import Coord
 from terminaltexteffects.utils.graphics import Color, ColorPair
 
 
@@ -74,6 +75,7 @@ def test_swarm_final_gradient(
 @pytest.mark.parametrize("swarm_area_count_range", [(1, 2), (3, 4)])
 @pytest.mark.parametrize("input_data", ["single_char", "medium"], indirect=True)
 def test_swarm_args(
+    *,
     terminal_config_default_no_framerate: TerminalConfig,
     input_data: str,
     base_color: tuple[Color, ...],
@@ -120,6 +122,21 @@ def test_swarm_coordination_advances_past_area_nine(coordination: float, expecte
     assert iterator.active_swarm_area == "10_swarm_area"
     assert second_character.motion.active_path is not None
     assert second_character.motion.active_path.path_id == expected_follower_area
+
+
+def test_swarm_preserves_area_count_when_focus_coordinates_repeat(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Returning to a focus coordinate must not discard a configured swarm area."""
+    monkeypatch.setattr(effect_swarm.geometry, "find_coords_on_circle", lambda *_args, **_kwargs: [Coord(1, 1)])
+    effect = effect_swarm.Swarm("AB")
+    effect.effect_config.swarm_size = 1
+    effect.effect_config.swarm_area_count_range = (12, 12)
+    effect.terminal_config = _make_terminal_config("ignore")
+    iterator = cast("effect_swarm.SwarmIterator", iter(effect))
+
+    expected_paths = {f"{index}_swarm_area" for index in range(12)}
+    for character in iterator.terminal.get_characters():
+        area_paths = {path_id for path_id in character.motion.paths if path_id.endswith("_swarm_area")}
+        assert area_paths == expected_paths
 
 
 def test_swarm_zero_ratio_boundaries_and_runtime_behavior() -> None:

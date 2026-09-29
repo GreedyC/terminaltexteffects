@@ -306,6 +306,28 @@ def test_zsh_completion_registers_in_clean_shell() -> None:
     assert "tte:_shtab_tte terminaltexteffects:_shtab_tte" in result.stdout
 
 
+def test_zsh_completion_excludes_insecure_directory_without_prompt(tmp_path: Path) -> None:
+    """Noninteractive registration must succeed without trusting writable completions."""
+    insecure_dir = tmp_path / "insecure-completions"
+    insecure_dir.mkdir()
+    (insecure_dir / "_untrusted_completion").write_text("#compdef untrusted_command\n", encoding="utf-8")
+    insecure_dir.chmod(0o777)
+    result = _run_zsh(
+        'fpath=("$TTE_INSECURE_FPATH" $fpath); '
+        'autoload -Uz compaudit; compaudit; '
+        'eval "$(' + f"{sys.executable} -m terminaltexteffects --print-completion zsh"
+        + ')"; print -r -- "tte:${_comps[tte]} terminaltexteffects:${_comps[terminaltexteffects]}"; '
+        'print -r -- "untrusted:${_comps[untrusted_command]}"',
+        env={"TTE_INSECURE_FPATH": str(insecure_dir), "ZDOTDIR": str(tmp_path)},
+    )
+
+    assert str(insecure_dir) in result.stdout
+    assert "tte:_shtab_tte terminaltexteffects:_shtab_tte" in result.stdout
+    assert "untrusted:\n" in result.stdout
+    assert "initialization aborted" not in result.stderr
+    assert "can't open terminal" not in result.stderr
+
+
 def test_bash_completion_suggests_effect_names_and_options() -> None:
     """Bash completion should suggest built-in effects and effect-specific options."""
     result = _run_bash(
